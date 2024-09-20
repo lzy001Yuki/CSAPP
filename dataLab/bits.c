@@ -143,7 +143,7 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-  return 2;
+  return (~(x&y)) & (~((~x) & (~y))) ;
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -153,7 +153,7 @@ int bitXor(int x, int y) {
  */
 int tmin(void) {
 
-  return 2;
+  return 1<<31;
 
 }
 //2
@@ -165,7 +165,7 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  return 2;
+  return !((~(1<<31)) ^ x);
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -176,7 +176,12 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+    // OxAAAAAAAA represents for unsigned int;
+    int slice = 0xAA, oddOneEvenZero = 0XAA;
+    oddOneEvenZero = (oddOneEvenZero << 8) + slice;
+    oddOneEvenZero = (oddOneEvenZero << 8) + slice;
+    oddOneEvenZero = (oddOneEvenZero << 8) + slice;
+    return !(~(oddOneEvenZero & x) + oddOneEvenZero + 1);
 }
 /* 
  * negate - return -x 
@@ -186,7 +191,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x+1;
 }
 //3
 /* 
@@ -199,7 +204,11 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+    int judge1 = !((x>>4)^(0x3)); // 1
+    x = x & 0xf;
+    int judge2 = !!(x & 0x8);
+    int judge3 = (x & 0x6);
+  return judge1 & (!judge2 | (judge2 & !judge3));
 }
 /* 
  * conditional - same as x ? y : z 
@@ -209,7 +218,8 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+    int mask = !!x;
+    return ((~mask + 1) & y) | ((~(~mask + 1)) & z);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -219,7 +229,9 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  int neg = (~x) + 1;
+  int add = neg + y;
+  return !(add & (1<<31));
 }
 //4
 /* 
@@ -231,7 +243,8 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+    // x | -x >= 0
+    return ((x | ~x + 1) >> 31) + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -246,7 +259,39 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+    int y, result, mask16, mask8, mask4, mask2, mask1, bitnum;
+
+    mask1 = 0x2;                    // 0x1 << 1
+    mask2 = 0xC;                    // 0x3 << 2
+    mask4 = 0xF0;                   // 0x000000F0
+    mask8 = 0xFF << 8;              // 0x0000FF00
+    mask16 = (mask8 | 0xFF) << 16;  // 0xFFFF0000
+
+    result = 1;
+    y = x ^ (x >> 31);  // 2-complement
+
+    // Check first 16 bits, if they have at least one bit - result > 16
+    bitnum = (!!(y & mask16)) << 4;  // 16 OR zero
+    result += bitnum;
+    y = y >> bitnum;
+
+    bitnum = (!!(y & mask8)) << 3;  // 8 OR zero
+    result += bitnum;
+    y = y >> bitnum;
+
+    bitnum = (!!(y & mask4)) << 2;  // 4 OR zero
+    result += bitnum;
+    y = y >> bitnum;
+
+    bitnum = (!!(y & mask2)) << 1;  // 2 OR zero
+    result += bitnum;
+    y = y >> bitnum;
+
+    bitnum = !!(y & mask1);  // 1 OR zero
+    result += bitnum;
+    y = y >> bitnum;
+
+    return result + (y & 1);
 }
 //float
 /* 
@@ -261,7 +306,24 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+    unsigned sign = uf & 0x80000000;
+    unsigned exponent = (uf & 0x7F800000) >> 23;
+    unsigned fraction = uf & 0x007FFFFF;
+
+    if (exponent == 0xFF) {
+        return uf;
+    }
+
+    if (exponent == 0) {
+        fraction <<= 1;
+        return sign | fraction;
+    } else {
+        exponent++;
+        if (exponent == 0xFF) {
+            return sign | 0x7F800000;
+        }
+        return sign | (exponent << 23) | fraction;
+    }
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -276,7 +338,43 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+    // Extract the sign, exponent, and fraction (mantissa)
+    unsigned sign = uf >> 31;                      // 1 bit, sign
+    unsigned exponent = (uf >> 23) & 0xFF;         // 8 bits, exponent
+    unsigned fraction = uf & 0x7FFFFF;             // 23 bits, fraction
+
+    if (exponent == 0xFF) {
+        return 0x80000000u;
+    }
+
+    if (exponent == 0) {
+        return 0; // zero case
+    }
+
+    // Normalize exponent (subtract bias)
+    int E = exponent - 127;
+
+    if (E >= 31) {
+        return 0x80000000u;
+    }
+
+    if (E < 0) {
+        return 0;
+    }
+
+    // Prepare the integer value
+    // Reconstruct the significand with implicit leading 1 for normalized numbers
+    int significand = fraction | (1<<23); // normalized fraction with implicit 1
+/// be careful about the implicit 1!!!
+    // Apply the exponent to compute the integer value
+    // >> (23-E): Adjusts the significand according to the exponent
+    if (E > 23) {
+        // Shift left if E is greater than 23
+        return (sign ? -(significand << (E - 23)) : significand << (E - 23));
+    } else {
+        // Shift right if E is less than or equal to 23
+        return (sign ? -(significand >> (23 - E)) : significand >> (23 - E));
+    }
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -292,5 +390,12 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+    if (x < -126) {
+        return 0; // too small to be represented as a denorm
+    }
+    if (x > 127) {
+        return 0x7F800000; // +INF in IEEE 754 format
+    }
+    // fraction and sign are both zero
+    return (x + 127) << 23;
 }
